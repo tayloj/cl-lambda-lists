@@ -1,0 +1,7 @@
+implement parsers for 
+  * macro lambda lists
+  * destructuring lambda lists (like macro lambda lists, but without &environment)
+  * deftype lambda lists (like macro lambda lists)
+  * define-method-combination lambda lists
+
+refactor and cleanup
