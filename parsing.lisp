@@ -90,9 +90,9 @@ keyword is encountered, is collected as an optional parameter."
                 (check-keyword-argument-name kx)
                 (check-variable x env))
               (check-variable x env))
-          (push key keys))))
-    (with-keyword (&allow-other-keys list)
-      (setq allow-other-keys-p t))
+          (push key keys)))
+      (with-keyword (&allow-other-keys list)
+        (setq allow-other-keys-p t)))
     (values (nreverse keys) allow-other-keys-p list)))
 
 (defun collect-aux-parameters (list &optional env &aux (auxes '()))
@@ -164,10 +164,8 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
         (destructuring-bind (x) (to-list opt)
           (check-variable x env)
           (push opt optvars))))
-    (with-keyword (&rest list)
-      (let ((rest (pop list)))
-        (check-variable rest env)
-        (setq restvar rest)))
+    (multiple-value-setq (restvar list)
+      (collect-single-parameter (&rest) list env))
     (with-keyword (&key list)
       (do-parameters (key list)
         (destructuring-bind (x) (to-list key)
@@ -176,9 +174,9 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
                 (check-keyword-argument-name kx)
                 (check-variable x env))
               (check-variable x env))
-          (push key keyvars))))
-    (with-keyword (&allow-other-keys list)
-      (setq allow-other-keys-p t))
+          (push key keyvars)))
+      (with-keyword (&allow-other-keys list)
+        (setq allow-other-keys-p t)))
     (unless (endp list)
       (error "Malformed generic function lambda list: ~S." orig))
     (values (nreverse reqvars)
@@ -257,6 +255,8 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
       (error "Malformed lambda list: ~S." orig))
     (values reqvars optvars restvar)))
 
+
+
 (defun map-destructuring-lambda-list (function list)
   "Maps over a destructuring lambda list, and returns a new list like
 the input, but each pattern variable replaced with the result of calling
@@ -295,9 +295,9 @@ function with the type of variable \(:whole, :required, :optional, :rest,
                       (if (symbolp keyspec)
                           (list* (handle :key keyspec) more)
                           (destructuring-bind (keyword var) keyspec
-                            (list* (list keyword (handle :key var)) more))))))))
-      (with-keyword (&allow-other-keys list)
-        (save '&allow-other-keys))
+                            (list* (list keyword (handle :key var)) more)))))))
+        (with-keyword (&allow-other-keys list)
+          (save '&allow-other-keys)))
       (with-keyword (&aux list)
         (save '&aux)
         (do-parameters (aux list)
