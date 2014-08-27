@@ -126,13 +126,7 @@ parameter specifiers. Implementations vary on whether repeated variables
 are allowed. See, for context:
 https://groups.google.com/d/msg/comp.lang.lisp/KdRq2_XMVGc/2oNbz4Pa-UcJ
 https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
-  (let ((orig list)
-        (reqvars '())
-        (optvars '())
-        (restvar nil)
-        (keyvars '())
-        (allow-other-keys-p nil)
-        (auxvars '()))
+  (let ((orig list) reqvars optvars restvar keyvars allow-other-keys-p auxvars)
     (multiple-value-setq (reqvars list)
       (collect-required-parameters list env))
     (multiple-value-setq (optvars list)
@@ -149,12 +143,8 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
             allow-other-keys-p auxvars)))
 
 (defun parse-generic-function-lambda-list (list &optional env)
-  (let ((orig list)
-        (reqvars '())
-        (optvars '())
-        (restvar nil)
-        (keyvars '())
-        (allow-other-keys-p nil))
+  (let ((orig list) reqvars optvars restvar keyvars
+        allow-other-keys-p)
     (multiple-value-setq (reqvars list)
       (collect-required-parameters list env))
     ;; Optional and keyword parameters for generic function lambda lists
@@ -186,13 +176,8 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
             allow-other-keys-p)))
 
 (defun parse-specialized-lambda-list (list &optional env)
-  (let ((orig list)
-        (reqvars '())
-        (optvars '())
-        (restvar nil)
-        (keyvars '())
-        (allow-other-keys-p nil)
-        (auxvars '()))
+  (let ((orig list) reqvars optvars restvar keyvars allow-other-keys-p
+        auxvars)
     ;; required variables in specialized lambda lists can have
     ;; specializers; they're not just variables.
     (do-parameters (req list)
@@ -218,13 +203,8 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
   (parse-ordinary-lambda-list list env))
 
 (defun parse-defsetf-lambda-list (list &optional env)
-  (let ((orig list)
-        (reqvars '())
-        (optvars '())
-        (restvar nil)
-        (keyvars '())
-        (allow-other-keys-p nil)
-        (envvar nil))
+  (let ((orig list) reqvars optvars restvar keyvars
+        allow-other-keys-p envvar)
     (multiple-value-setq (reqvars list)
       (collect-required-parameters list env))
     (multiple-value-setq (optvars list)
@@ -241,10 +221,7 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
             allow-other-keys-p envvar)))
 
 (defun parse-define-modify-macro-lambda-list (list &optional env)
-  (let ((orig list)
-        (reqvars '())
-        (optvars '())
-        (restvar nil))
+  (let ((orig list) reqvars optvars restvar)
     (multiple-value-setq (reqvars list)
       (collect-required-parameters list env))
     (multiple-value-setq (optvars list)
@@ -255,16 +232,9 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
       (error "Malformed lambda list: ~S." orig))
     (values reqvars optvars restvar)))
 
-
 (defun parse-method-combination-lambda-list (list &optional env)
-  (let ((orig list)
-        (wholevar nil)
-        (reqvars '())
-        (optvars '())
-        (restvar nil)
-        (keyvars '())
-        (allow-other-keys-p nil)
-        (auxvars '()))
+  (let ((orig list) wholevar reqvars optvars restvar keyvars
+        allow-other-keys-p auxvars)
     (multiple-value-setq (wholevar list)
       (collect-single-parameter (&whole) list env))
     (multiple-value-setq (reqvars list)
@@ -281,7 +251,6 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
       (error "Malformed lambda list: ~S." orig))
     (values wholevar reqvars optvars restvar keyvars
             allow-other-keys-p auxvars)))
-
 
 (defun map-destructuring-lambda-list (function list)
   "Maps over a destructuring lambda list, and returns a new list like
