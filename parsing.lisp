@@ -256,6 +256,32 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
     (values reqvars optvars restvar)))
 
 
+(defun parse-method-combination-lambda-list (list &optional env)
+  (let ((orig list)
+        (wholevar nil)
+        (reqvars '())
+        (optvars '())
+        (restvar nil)
+        (keyvars '())
+        (allow-other-keys-p nil)
+        (auxvars '()))
+    (multiple-value-setq (wholevar list)
+      (collect-single-parameter (&whole) list env))
+    (multiple-value-setq (reqvars list)
+      (collect-required-parameters list env))
+    (multiple-value-setq (optvars list)
+      (collect-optional-parameters list env))
+    (multiple-value-setq (restvar list)
+      (collect-single-parameter (&rest) list env))
+    (multiple-value-setq (keyvars allow-other-keys-p list)
+      (collect-keyword-parameters list env))
+    (multiple-value-setq (auxvars list)
+      (collect-aux-parameters list env))
+    (unless (endp list)
+      (error "Malformed lambda list: ~S." orig))
+    (values wholevar reqvars optvars restvar keyvars
+            allow-other-keys-p auxvars)))
+
 
 (defun map-destructuring-lambda-list (function list)
   "Maps over a destructuring lambda list, and returns a new list like
