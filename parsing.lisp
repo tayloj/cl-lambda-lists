@@ -46,10 +46,17 @@ the scope of BODY."
                  (pop ,list)
                  ,@body))))))
 
-(defun check-variable (x &optional env)
-  "Assert that is a non-constant symbol in the environment."
-  (assert (and (symbolp x) (not (constantp x env)))
-          () "Bad variable: ~S." x))
+(defun variablep (x &optional env)
+  (and (symbolp x)
+       (not (constantp x env))))
+
+(defun check-variable (var &optional env)
+  (unless (variablep var env)
+    (error "Bad variable: ~S." var)))
+
+(defun check-keyword-argument-name (x)
+  (unless (symbolp x)
+    (error "Bad keyword argument name: ~S." x)))
 
 (defun parse-ordinary-lambda-list (list &optional env)
   "Returns as multiple values: required parameters, optional parameter
@@ -89,7 +96,7 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
           (when xpp (check-variable xp) env)
           (if (listp x)
               (destructuring-bind (kx x) x
-                (assert (symbolp kx) () "Bad keyword argument name: ~S." kx)
+                (check-keyword-argument-name kx)
                 (check-variable x env))
               (check-variable x env))
           (push key keyvars))))
@@ -135,7 +142,7 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
         (destructuring-bind (x) (to-list key)
           (if (listp x)
               (destructuring-bind (kx x) x
-                (assert (symbolp kx) () "Bad keyword argument name: ~S." kx)
+                (check-keyword-argument-name kx)
                 (check-variable x env))
               (check-variable x env))
           (push key keyvars))))
@@ -183,7 +190,7 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
           (when xpp (check-variable xp) env)
           (if (listp x)
               (destructuring-bind (kx x) x
-                (assert (symbolp kx) () "Bad keyword argument name: ~S." kx)
+                (check-keyword-argument-name kx)
                 (check-variable x env))
               (check-variable x env))
           (push key keyvars))))
@@ -239,7 +246,7 @@ https://groups.google.com/d/msg/comp.lang.lisp/hh834A0xThQ/IWCuJFhMzzwJ"
           (when xpp (check-variable xp) env)
           (if (listp x)
               (destructuring-bind (kx x) x
-                (assert (symbolp kx) () "Bad keyword argument name: ~S." kx)
+                (check-keyword-argument-name kx)
                 (check-variable x env))
               (check-variable x env))
           (push key keyvars))))
@@ -332,22 +339,3 @@ function with the type of variable \(:whole, :required, :optional, :rest,
       (unless (null list)
         (error "Bad destructuring lambda list: ~A." orig))
       (nreverse result))))
-
-;; Used in an answer to http://stackoverflow.com/q/25463763/1281433
-;; which asks about getting destructuring bind to ignore wildcard
-;; pattern variables (e.g., those beginning with _).
-#-(and)
-(defmacro destructuring-bind* (lambda-list object &body body)
-  (let* ((ignores '())
-         (lambda-list (map-dll (lambda (type var)
-                                 (declare (ignore type))
-                                 (if (and (> (length (symbol-name var)) 0)
-                                          (char= #\_ (char (symbol-name var) 0)))
-                                     (let ((var (gensym)))
-                                       (push var ignores)
-                                       var)
-                                     var))
-                               lambda-list)))
-    `(destructuring-bind ,lambda-list ,object
-       (declare (ignore ,@(nreverse ignores)))
-       ,@body)))
