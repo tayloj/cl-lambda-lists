@@ -57,10 +57,12 @@ not a constant in ENV."
        (not (constantp x env))))
 
 (defun check-variable (var &optional env)
+  "Signals an error unless (VARIABLEP VAR ENV) is true."
   (unless (variablep var env)
     (error "Bad variable: ~S." var)))
 
 (defun check-keyword-argument-name (x)
+  "Signals an error unless (SYMBOLP X) is true."
   (unless (symbolp x)
     (error "Bad keyword argument name: ~S." x)))
 
@@ -107,14 +109,28 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
                      (when xpp (check-variable xp env))))
                (push opt opts)))
            (push (nreverse opts) results)))
-        ((&whole &environment &rest)
+        ((:dotted)
+         ;; Destructuring lambda lists allow (... . VAR) as a variant of
+         ;; (... &REST VAR).  When LIST becomes VAR, we simply modify
+         ;; LIST to be (&REST VAR).
+         (when (and (atom list) (not (null list)))
+           (setq list (list '&rest list))))
+        ((:body-to-rest)
+         ;; Destructuring lambda lists allow (... [&BODY|&REST] VAR ...). 
+         ;; To simplify processing, we convert &BODY to &REST
+         (with-keyword (&body list)
+           (push '&rest list)))
+        ((&whole &environment &rest &body)
          (let ((parm nil))
            (%with-keyword 
             (list part) list 
             #'(lambda (ll-keyword)
-                (declare (ignore ll-keyword))
-                (pop list)                           ; remove PART
-                (setq parm (pop list))               ; remove var 
+                (pop list)              ; remove PART
+                (unless (consp list)
+                  (error "Unexpected end of list after ~S." ll-keyword))
+                (when (member (first list) lambda-list-keywords)
+                  (error "Missing parameter after lambda-list keyword: ~s." part))
+                (setq parm (pop list))  ; remove VAR
                 (if checkp (funcall check parm env)
                     (check-variable parm env))))
            (push parm results)))
@@ -195,6 +211,58 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
 
 (defun parse-method-combination-lambda-list (list &optional env)
   (parse-lambda-list '(&whole :required &optional &rest &key &aux) list env))
+
+(defun parse-macro-lambda-list (list &optional env)
+  ;; macro lambda lists are just like destructuring lambda lists except
+  ;; that they can contain environment variables anywhere at the top
+  ;; level.  The easiest solution is probably to check for &environment
+  ;; first, remove it, and parse the rest with
+  ;; parse-destructuring-lambda-list.
+  (multiple-value-bind 
+        (whole e1 required e2 optional e3 rest e4 key allow e5 aux e6)
+      (parse-lambda-list 
+       '(&whole &environment
+         :required &environment
+         &optional &environment
+         :dotted :body-to-rest
+         &rest &environment
+         &key &environment
+         &aux &environment)
+       list env)
+    (if (> (count-if 'identity (list e1 e2 e3 e4 e5 e6)) 1)
+        (error "Malformed macro lambda list: ~S." list)
+        (values whole required optional rest key allow aux 
+                (or e1 e2 e3 e4 e5 e6)))))
+
+(defun parse-destructuring-lambda-list (list &optional env)
+  (flet ((pdll (x env)
+           (if (listp x)
+               (parse-destructuring-lambda-list x env)
+               (check-variable x env))))
+    (parse-lambda-list
+     `((&whole    ,#'pdll)
+       (:required ,#'pdll)
+       (&optional ,#'(lambda (opt env)
+                       (destructuring-bind (x &optional xd (xp nil xpp))
+                           (to-list opt)
+                         (declare (ignore xd))
+                         (pdll x env)
+                         (when xpp (check-variable xp env)))))
+       :dotted              ; convert (... . VAR) to (... &rest VAR)
+       :body-to-rest        ; convert (... &body VAR) to (... &rest VAR)
+       (&rest     ,#'pdll)
+       (&key      ,#'(lambda (key env)
+                       (destructuring-bind (k &optional kd (kp nil kpp))
+                           (to-list key)
+                         (declare (ignore kd))
+                         (when kpp (check-variable kp env))
+                         (if (symbolp k)
+                             (check-variable k env)
+                             (destructuring-bind (k v) k
+                               (check-keyword-argument-name k)
+                               (pdll v env))))))
+       &aux)
+     list env)))
 
 (defun map-destructuring-lambda-list (function list)
   "Maps over a destructuring lambda list, and returns a new list like
