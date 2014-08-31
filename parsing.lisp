@@ -1,13 +1,71 @@
+;;;; Copyright (c) 2014, Joshua Taylor
+;;;; All rights reserved.
+;;;; 
+;;;; Redistribution and use in source and binary forms, with or without
+;;;; modification, are permitted provided that the following conditions
+;;;; are met:
+;;;; 
+;;;;   1. Redistributions of source code must retain the above copyright
+;;;;   notice, this list of conditions and the following disclaimer.
+;;;; 
+;;;;   2. Redistributions in binary form must reproduce the above
+;;;;   copyright notice, this list of conditions and the following
+;;;;   disclaimer in the documentation and/or other materials provided
+;;;;   with the distribution.
+;;;; 
+;;;;   3. Neither the name of the copyright holder nor the names of its
+;;;;   contributors may be used to endorse or promote products derived
+;;;;   from this software without specific prior written permission.
+;;;;
+;;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+;;;; "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+;;;; LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+;;;; FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+;;;; COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+;;;; INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+;;;; (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+;;;; SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+;;;; HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+;;;; STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+;;;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+;;;; OF THE POSSIBILITY OF SUCH DAMAGE.
+
+(defpackage #:cl-parsing-lambda-lists-internals
+  (:use "COMMON-LISP")
+  (:export
+   #:do-parameters
+   #:%with-keyword
+   #:with-keyword
+   #:variablep
+   #:check-variable
+   #:check-keyword-argument-name
+   #:parse-lambda-list
+   #:parse-destructuring-or-macro-lambda-list))
 
 (defpackage #:cl-parsing-lambda-lists
-  (:use "COMMON-LISP")
+  (:use "COMMON-LISP" #:cl-parsing-lambda-lists-internals)
   (:documentation
    "A small package of utility functions for parsing different types of
 lambda lists.  This functionality is present in every implementation in
 some form or another, but lack of a standard interface makes it
-difficult to write macros that proces lambda lists."))
+difficult to write macros that proces lambda lists.")
+  (:export
+   #:parse-lambda-list
+   #:parse-ordinary-lambda-list
+   #:parse-generic-function-lambda-list
+   #:parse-specialized-lambda-list
+   #:parse-boa-lambda-list
+   #:parse-defsetf-lambda-list
+   #:parse-define-modify-macro-lambda-list
+   #:parse-method-combination-lambda-list
+   #:parse-macro-lambda-list
+   #:parse-destructuring-lambda-list)
+  (:export
+   #:map-destructuring-lambda-list))
 
 (in-package #:cl-parsing-lambda-lists)
+
+;;; Internals
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun to-list (object)
@@ -23,7 +81,7 @@ lambda-list (which may be an improper list) is encountered.  The tail of
 the list is stored back into LAMBDA-LIST (which must be a place)."
   (let ((list (gensym (symbol-name '#:list-))))
     `(do ((,list ,lambda-list))
-         ((or (atom ,list) 
+         ((or (atom ,list)
               (member (first ,list) lambda-list-keywords))
           (setf ,lambda-list ,list)
           ,result)
@@ -34,7 +92,7 @@ the list is stored back into LAMBDA-LIST (which must be a place)."
   "If LIST is a non-empty list and its first element is in the list
 designated by KEYWORDS, calls FUNCTION with the first element of LIST.
 Otherwise returns NIL."
-  (when (and (consp list) 
+  (when (and (consp list)
              (member (first list) keywords))
     (funcall function (first list))))
 
@@ -43,10 +101,10 @@ Otherwise returns NIL."
                          &optional (var (gensym (symbol-name '#:ll-keyword-)) varp))
                         &body body)
   "A simple MACRO wrapper around %WITH-KEYWORD."
-  `(%with-keyword 
+  `(%with-keyword
     ',(to-list keywords) ,list
     #'(lambda (,var)
-        ,@(unless varp `((declare (ignore ,var)))) 
+        ,@(unless varp `((declare (ignore ,var))))
         (pop ,list)
         ,@body)))
 
@@ -116,14 +174,14 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
          (when (and (atom list) (not (null list)))
            (setq list (list '&rest list))))
         ((:body-to-rest)
-         ;; Destructuring lambda lists allow (... [&BODY|&REST] VAR ...). 
+         ;; Destructuring lambda lists allow (... [&BODY|&REST] VAR ...).
          ;; To simplify processing, we convert &BODY to &REST
          (with-keyword (&body list)
            (push '&rest list)))
         ((&whole &environment &rest &body)
          (let ((parm nil))
-           (%with-keyword 
-            (list part) list 
+           (%with-keyword
+            (list part) list
             #'(lambda (ll-keyword)
                 (pop list)              ; remove PART
                 (unless (consp list)
@@ -137,7 +195,7 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
         ((&key)
          (let ((keys '())
                (allow-other-keys-p nil))
-           (with-keyword (&key list) 
+           (with-keyword (&key list)
              (do-parameters (key list)
                (if checkp (funcall check key env)
                    (destructuring-bind (x &optional (dx nil dxp) (xp nil xpp))
@@ -159,7 +217,7 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
            (with-keyword (&aux list)
              (do-parameters (aux list)
                (if checkp (funcall check aux env)
-                   (destructuring-bind (var &optional form) 
+                   (destructuring-bind (var &optional form)
                        (to-list aux)
                      (declare (ignore form))
                      (check-variable var env)))
@@ -185,7 +243,7 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
                    (check-keyword-argument-name kx)
                    (check-variable x env))
                  (check-variable x env)))))
-    (parse-lambda-list 
+    (parse-lambda-list
      `(:required (&optional ,#'check-opt) &rest (&key ,#'check-key))
      list env)))
 
@@ -213,14 +271,17 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
   (parse-lambda-list '(&whole :required &optional &rest &key &aux) list env))
 
 (defun parse-macro-lambda-list (list &optional env)
-  (parse-destructuring-lambda-list list env t))
+  (parse-destructuring-or-macro-lambda-list list env t))
 
 (defun parse-deftype-lambda-list (list &optional env)
   (parse-macro-lambda-list list env))
 
-(defun parse-destructuring-lambda-list (list 
-                                        &optional env allow-environment-p
-                                        &aux environment)
+(defun parse-destructuring-lambda-list (list &optional env)
+  (parse-destructuring-or-macro-lambda-list list env nil))
+
+(defun parse-destructuring-or-macro-lambda-list (list
+                                                 &optional env allow-environment-p
+                                                 &aux environment)
   ;; This implements the parsing necessary for destructuring lambda
   ;; lists as well as macro lambda lists.  The only difference is that
   ;; macro lambda lists can have an &environment parameter at the top
@@ -235,7 +296,7 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
               (error "&environment variable not allowed here: ~S." e))
              ((not (null environment))
               (error "Multiple &environments: ~S and ~S." environment e))
-             (t 
+             (t
               (check-variable e env)
               (setq environment e))))
          (pdll (x env)
@@ -244,7 +305,7 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
             &environment will not be allowed in any case).  Otherwise,
             it should be a variable."
            (if (listp x)
-               (parse-destructuring-lambda-list x env nil)
+               (parse-destructuring-lambda-list x env)
                (check-variable x env))))
     (multiple-value-bind (whole e1 required e2 optional e3
                                 rest e4 key allow e5 aux e6)
@@ -260,7 +321,8 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
                                 (pdll x env)
                                 (when xpp (check-variable xp env)))))
            (&environment ,#'handle-env)
-           :dotted :body-to-rest ; (... . x) | (... &body x) => (... &rest x)
+           :dotted                  ; [ (... . x)
+           :body-to-rest            ; | (... &body x) ] => (... &rest x)
            (&rest        ,#'pdll)
            (&environment ,#'handle-env)
            (&key         ,#'(lambda (key env)
@@ -304,7 +366,7 @@ function with the type of variable \(:whole, :required, :optional, :rest,
           (save (if (symbolp opt)
                     (handle :optional opt)
                     (list* (handle :optional (first opt)) (rest opt))))))
-      (when (and (atom list) (not (null list))) ; turn (... . REST) 
+      (when (and (atom list) (not (null list))) ; turn (... . REST)
         (setq list (list '&rest list)))         ; into (... &rest REST)
       (with-keyword ((&rest &body) list rest-or-body)
         (save rest-or-body)
