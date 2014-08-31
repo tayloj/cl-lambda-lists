@@ -30,7 +30,7 @@
 ;;;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 ;;;; OF THE POSSIBILITY OF SUCH DAMAGE.
 
-(defpackage #:cl-parsing-lambda-lists-internals
+(defpackage #:cl-lambda-lists-internals
   (:use "COMMON-LISP")
   (:export
    #:do-parameters
@@ -42,8 +42,8 @@
    #:parse-lambda-list
    #:parse-destructuring-or-macro-lambda-list))
 
-(defpackage #:cl-parsing-lambda-lists
-  (:use "COMMON-LISP" #:cl-parsing-lambda-lists-internals)
+(defpackage #:cl-lambda-lists
+  (:use "COMMON-LISP" #:cl-lambda-lists-internals)
   (:documentation
    "A small package of utility functions for parsing different types of
 lambda lists.  This functionality is present in every implementation in
@@ -63,7 +63,7 @@ difficult to write macros that proces lambda lists.")
   (:export
    #:map-destructuring-lambda-list))
 
-(in-package #:cl-parsing-lambda-lists)
+(in-package #:cl-lambda-lists)
 
 ;;; Internals
 
