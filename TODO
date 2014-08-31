@@ -1,3 +1,1 @@
-implement parsers for 
-  * macro lambda lists (like destructuring lambda list, with with &environment at top level)
-  * deftype lambda lists (like macro lambda lists)
+Documentation

@@ -213,56 +213,72 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
   (parse-lambda-list '(&whole :required &optional &rest &key &aux) list env))
 
 (defun parse-macro-lambda-list (list &optional env)
-  ;; macro lambda lists are just like destructuring lambda lists except
-  ;; that they can contain environment variables anywhere at the top
-  ;; level.  The easiest solution is probably to check for &environment
-  ;; first, remove it, and parse the rest with
-  ;; parse-destructuring-lambda-list.
-  (multiple-value-bind 
-        (whole e1 required e2 optional e3 rest e4 key allow e5 aux e6)
-      (parse-lambda-list 
-       '(&whole &environment
-         :required &environment
-         &optional &environment
-         :dotted :body-to-rest
-         &rest &environment
-         &key &environment
-         &aux &environment)
-       list env)
-    (if (> (count-if 'identity (list e1 e2 e3 e4 e5 e6)) 1)
-        (error "Malformed macro lambda list: ~S." list)
-        (values whole required optional rest key allow aux 
-                (or e1 e2 e3 e4 e5 e6)))))
+  (parse-destructuring-lambda-list list env t))
 
-(defun parse-destructuring-lambda-list (list &optional env)
-  (flet ((pdll (x env)
+(defun parse-deftype-lambda-list (list &optional env)
+  (parse-macro-lambda-list list env))
+
+(defun parse-destructuring-lambda-list (list 
+                                        &optional env allow-environment-p
+                                        &aux (orig list))
+  ;; This implements the parsing necessary for destructuring lambda
+  ;; lists as well as macro lambda lists.  The only difference is that
+  ;; macro lambda lists can have an &environment parameter at the top
+  ;; level (but not at nested levels).
+  (flet ((handle-env (e env)
+           "If environment variables are allowed (macro lambda list
+            mode), then an &environment parameter should be a variable. 
+            Otherwise it's not permitted, and an error is signalled."
+           (if allow-environment-p 
+               (check-variable e env)
+               (error "&environment variable not allowed here: ~S." e)))
+         (pdll (x env)
+           "If x is a list (including the empty list), then it is
+            recursively parsed as a destructuring lambda list (but
+            &environment will not be allowed in any case).  Otherwise,
+            it should be a variable."
            (if (listp x)
-               (parse-destructuring-lambda-list x env)
+               (parse-destructuring-lambda-list x env nil)
                (check-variable x env))))
-    (parse-lambda-list
-     `((&whole    ,#'pdll)
-       (:required ,#'pdll)
-       (&optional ,#'(lambda (opt env)
-                       (destructuring-bind (x &optional xd (xp nil xpp))
-                           (to-list opt)
-                         (declare (ignore xd))
-                         (pdll x env)
-                         (when xpp (check-variable xp env)))))
-       :dotted              ; convert (... . VAR) to (... &rest VAR)
-       :body-to-rest        ; convert (... &body VAR) to (... &rest VAR)
-       (&rest     ,#'pdll)
-       (&key      ,#'(lambda (key env)
-                       (destructuring-bind (k &optional kd (kp nil kpp))
-                           (to-list key)
-                         (declare (ignore kd))
-                         (when kpp (check-variable kp env))
-                         (if (symbolp k)
-                             (check-variable k env)
-                             (destructuring-bind (k v) k
-                               (check-keyword-argument-name k)
-                               (pdll v env))))))
-       &aux)
-     list env)))
+    ;; We bind each of the environment positions separately.  
+    ;; At the end we'll make sure that at most one had a value.
+    (multiple-value-bind (whole e1 required e2 optional e3
+                                rest e4 key allow e5 aux e6)
+        (parse-lambda-list
+         `((&whole       ,#'pdll)
+           (&environment ,#'handle-env)
+           (:required    ,#'pdll)
+           (&environment ,#'handle-env)
+           (&optional    ,#'(lambda (opt env)
+                              (destructuring-bind (x &optional xd (xp nil xpp))
+                                  (to-list opt)
+                                (declare (ignore xd))
+                                (pdll x env)
+                                (when xpp (check-variable xp env)))))
+           (&environment ,#'handle-env)
+           :dotted :body-to-rest ; (... . x) | (... &body x) => (... &rest x)
+           (&rest        ,#'pdll)
+           (&environment ,#'handle-env)
+           (&key         ,#'(lambda (key env)
+                              (destructuring-bind (k &optional kd (kp nil kpp))
+                                  (to-list key)
+                                (declare (ignore kd))
+                                (when kpp (check-variable kp env))
+                                (if (symbolp k)
+                                    (check-variable k env)
+                                    (destructuring-bind (k v) k
+                                      (check-keyword-argument-name k)
+                                      (pdll v env))))))
+           (&environment ,#'handle-env)
+           &aux                         ; same as usual
+           (&environment ,#'handle-env))
+         list env)
+      (let ((nenv (count-if-not 'null (list e1 e2 e3 e4 e5 e6))))
+        (if (or (eql nenv 0)
+                (and allow-environment-p (eql nenv 1)))
+            (values whole required optional rest key allow aux 
+                    (or e1 e2 e3 e4 e5 e6))
+            (error "Malformed lambda list: ~S." orig))))))
 
 (defun map-destructuring-lambda-list (function list)
   "Maps over a destructuring lambda list, and returns a new list like
