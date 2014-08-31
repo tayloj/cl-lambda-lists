@@ -220,18 +220,24 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
 
 (defun parse-destructuring-lambda-list (list 
                                         &optional env allow-environment-p
-                                        &aux (orig list))
+                                        &aux environment)
   ;; This implements the parsing necessary for destructuring lambda
   ;; lists as well as macro lambda lists.  The only difference is that
   ;; macro lambda lists can have an &environment parameter at the top
   ;; level (but not at nested levels).
   (flet ((handle-env (e env)
            "If environment variables are allowed (macro lambda list
-            mode), then an &environment parameter should be a variable. 
-            Otherwise it's not permitted, and an error is signalled."
-           (if allow-environment-p 
-               (check-variable e env)
-               (error "&environment variable not allowed here: ~S." e)))
+            mode) and we haven't seen one yet, then it should be a
+            variable.  Otherwise it's not permitted, and an error is
+            signalled."
+           (cond
+             ((not allow-environment-p)
+              (error "&environment variable not allowed here: ~S." e))
+             ((not (null environment))
+              (error "Multiple &environments: ~S and ~S." environment e))
+             (t 
+              (check-variable e env)
+              (setq environment e))))
          (pdll (x env)
            "If x is a list (including the empty list), then it is
             recursively parsed as a destructuring lambda list (but
@@ -240,8 +246,6 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
            (if (listp x)
                (parse-destructuring-lambda-list x env nil)
                (check-variable x env))))
-    ;; We bind each of the environment positions separately.  
-    ;; At the end we'll make sure that at most one had a value.
     (multiple-value-bind (whole e1 required e2 optional e3
                                 rest e4 key allow e5 aux e6)
         (parse-lambda-list
@@ -273,12 +277,8 @@ indicating whether &ALLOW-OTHER-KEYS was specified."
            &aux                         ; same as usual
            (&environment ,#'handle-env))
          list env)
-      (let ((nenv (count-if-not 'null (list e1 e2 e3 e4 e5 e6))))
-        (if (or (eql nenv 0)
-                (and allow-environment-p (eql nenv 1)))
-            (values whole required optional rest key allow aux 
-                    (or e1 e2 e3 e4 e5 e6))
-            (error "Malformed lambda list: ~S." orig))))))
+      (declare (ignore e1 e2 e3 e4 e5 e6))
+      (values whole required optional rest key allow aux environment))))
 
 (defun map-destructuring-lambda-list (function list)
   "Maps over a destructuring lambda list, and returns a new list like
